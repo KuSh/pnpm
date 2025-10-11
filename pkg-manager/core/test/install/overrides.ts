@@ -294,3 +294,38 @@ test('overrides remove dependencies', async () => {
   const currentLockfile = project.readCurrentLockfile()
   expect(lockfile.overrides).toStrictEqual(currentLockfile.overrides)
 })
+
+test.only('overrides on peer dependencies', async () => {
+  const project = prepareEmpty()
+
+  const smithyOverridedVersion = '4.4.0'
+  const catalog: Record<string, string> = {
+    '@aws-sdk/client-api-gateway': '3.896.0',
+    '@smithy/types': smithyOverridedVersion,
+  }
+  const overrides: Record<string, string> = {
+    '@smithy/types@>=3.0.0': 'catalog:aws-sdk',
+  }
+  const { updatedManifest: manifest } = await addDependenciesToPackage({},
+    ['@aws-sdk/client-api-gateway@catalog:aws-sdk'],
+    testDefaults({ catalogs: { 'aws-sdk': catalog }, overrides })
+  )
+  const awsSdkClientMockVitestPackage = 'aws-sdk-client-mock-vitest@6.2.0'
+  await addDependenciesToPackage(manifest,
+    [awsSdkClientMockVitestPackage],
+    testDefaults({ catalogs: { 'aws-sdk': catalog }, overrides, targetDependenciesField: 'devDependencies' })
+  )
+
+  {
+    const lockfile = project.readLockfile()
+
+    const [, awsSdkClientMockVitestSnapshot] = Object.entries(lockfile.snapshots).find(([pkg]) => pkg.startsWith(awsSdkClientMockVitestPackage)) ?? []
+    expect(awsSdkClientMockVitestSnapshot).toBeDefined()
+    expect(awsSdkClientMockVitestSnapshot?.dependencies?.['@smithy/types']).toBe(smithyOverridedVersion)
+    expect(lockfile.overrides).toStrictEqual({
+      '@smithy/types@>=3.0.0': smithyOverridedVersion,
+    })
+    const currentLockfile = project.readCurrentLockfile()
+    expect(lockfile.overrides).toStrictEqual(currentLockfile.overrides)
+  }
+})
